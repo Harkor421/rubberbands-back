@@ -364,19 +364,23 @@ async function fetchHoldersBlockscout() {
       throw e;
     }
   }
-  contractHolders.clear();
-  for (const a of res.contracts) contractHolders.add(a);
-  return res.map;
+  return res; // { map, contracts } — applied by the caller AFTER the epoch check
 }
 
 /* ======================== POLLER: HOLDERS ========================= */
 async function pollHolders() {
+  const ep = tokenEpoch;
   try {
     if (!TOKEN || !isAddr(TOKEN)) throw new Error("CA not set / invalid");
     if (tokenTotalSupply === 0n) await loadTokenMeta();
-    const map = await fetchHoldersBlockscout();
+    const res = await fetchHoldersBlockscout();
+    // CA switched while we were crawling — this snapshot belongs to the old
+    // token and must never be applied (a cycle could pay the wrong list)
+    if (ep !== tokenEpoch) return;
     balances.clear();
-    for (const [a, v] of map) balances.set(a, v);
+    for (const [a, v] of res.map) balances.set(a, v);
+    contractHolders.clear();
+    for (const a of res.contracts) contractHolders.add(a);
 
     const supply = fmtUnits(tokenTotalSupply, tokenDecimals) || 0;
     const distAddr = wallet ? wallet.address.toLowerCase() : null;
